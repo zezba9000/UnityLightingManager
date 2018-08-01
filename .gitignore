@@ -1,0 +1,41 @@
+# Folders
+[Dd]ebug*/
+[Rr]elease*/
+[Bb]in/
+obj/
+Lib/
+ipch/
+.vs/
+
+# SLN
+*.db
+*.sdf
+*.suo
+*.user
+*.opensdf
+*.pidb
+*.userprefs
+*.opendb
+
+# System Files
+*.DS_Store
+*.cachefile
+
+# Unity files
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/Assets/AssetStoreTools*
+
+*.sln
+*.csproj
+*.tmp
+*.booproj
+*.svd
+*.apk
+*.unitypackage
+*.log
+
+sysinfo.txt

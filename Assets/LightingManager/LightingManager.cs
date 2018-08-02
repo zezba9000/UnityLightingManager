@@ -235,6 +235,7 @@ public class LightGroup
 	public void Enable()
 	{
 		// set lightmap data object
+		if (data == null) CreateDataObjects();
 		LightmapSettings.lightmaps = data;
 
 		// load and set light probes
@@ -303,6 +304,11 @@ public class LightingManager : MonoBehaviour
 
 	private void Start()
 	{
+		if (singleton.lightGroups != null)
+		{
+			foreach (var group in singleton.lightGroups) group.CreateDataObjects();
+		}
+
 		if (ValidateActiveGroup()) SwitchToGroup(activeGroup);
 	}
 
@@ -319,8 +325,21 @@ public class LightingManager : MonoBehaviour
 	private static void PostBuild()
 	{
 		if (singleton == null || singleton.lightGroups == null) return;
-		foreach (var group in singleton.lightGroups) group.CreateDataObjects();
-		singleton.SwitchToGroup(singleton.activeGroup);
+		Lightmapping.completed += singleton.Lightmapping_completed;
+	}
+
+	private void OnDestroy()
+	{
+		Lightmapping.completed -= Lightmapping_completed;
+	}
+
+	private void Lightmapping_completed()
+	{
+		var group = lightGroups[activeGroup];
+		if (EditorUtility.DisplayDialog("LightingManager", string.Format("Baking has finished.\nWould you like to copy lightmap files into selected group:\n'{0}'", group.sourceFolder), "Yes", "No"))
+		{
+			CopyLightmapFilesToGroup(singleton.activeGroup);
+		}
 	}
 
 	public void CopyLightmapFilesToGroup(int groupIndex)
@@ -328,19 +347,28 @@ public class LightingManager : MonoBehaviour
 		if (lightGroups == null || groupIndex > lightGroups.Length - 1 || groupIndex < 0 || string.IsNullOrEmpty(bakedFileLocation)) return;
 		lightGroups[groupIndex].CopyLightmapFiles(Path.Combine(Application.dataPath, bakedFileLocation));
 		AssetDatabase.Refresh();
+
+		AutoSetLightmapFiles(false);
 	}
 
-	public void AutoSetLightmapFiles()
+	public void AutoSetLightmapFiles(bool editorDlg)
 	{
 		if (!ValidateActiveGroup()) return;
 
 		foreach (var group in lightGroups) group.AutoSetLightmapFiles();
-		SwitchToGroup(activeGroup);
+		SwitchToGroup(activeGroup, editorDlg);
 	}
 	#endif
 
-	public void SwitchToGroup(int groupIndex)
+	public void SwitchToGroup(int groupIndex, bool editorDlg = false)
 	{
+		#if UNITY_EDITOR
+		if (editorDlg && !EditorApplication.isPlayingOrWillChangePlaymode && !EditorUtility.DisplayDialog("LightingManager Warning", "Are you sure you want to switch to selected group?\nNOTE: If you just baked light probe data it will be overwritten!", "Ok", "Cancel"))
+		{
+			return;
+		}
+		#endif
+
 		activeGroup = groupIndex;
 		if (!ValidateActiveGroup()) return;
 		

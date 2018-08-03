@@ -120,7 +120,7 @@ public class LightGroup
 
 		// save light probes
 		const string lightProbDataFile = "LightProbes.data";
-		if (LightmapSettings.lightProbes != null)
+		if (LightmapSettings.lightProbes != null && LightmapSettings.lightProbes.bakedProbes != null)
 		{
 			using (var stream = new FileStream(Path.Combine(sourceFolderFull, lightProbDataFile), FileMode.Create, FileAccess.Write))
 			using (var writer = new BinaryWriter(stream))
@@ -217,6 +217,7 @@ public class LightGroup
 	{
 		try
 		{
+			// try-catch to handle bug in older unity versions
 			LightmapSettings.lightProbes.bakedProbes = new SphericalHarmonicsL2[0];
 		}
 		catch { }
@@ -263,12 +264,18 @@ public class LightGroup
 					}
 				}
 
-				LightmapSettings.lightProbes.bakedProbes = bakedProbes;
+				try
+				{
+					// try-catch to handle bug in older unity versions
+					LightmapSettings.lightProbes.bakedProbes = bakedProbes;
+				}
+				catch { }
 			}
 			else
 			{
 				try
 				{
+					// try-catch to handle bug in older unity versions
 					LightmapSettings.lightProbes.bakedProbes = new SphericalHarmonicsL2[0];
 				}
 				catch { }

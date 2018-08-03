@@ -343,7 +343,7 @@ public class LightingManager : MonoBehaviour
 	private void Lightmapping_completed()
 	{
 		var group = lightGroups[activeGroup];
-		if (EditorUtility.DisplayDialog("LightingManager", string.Format("Baking has finished.\nWould you like to copy lightmap files into selected group:\n'{0}'", group.sourceFolder), "Yes", "No"))
+		if (EditorUtility.DisplayDialog("LightingManager", string.Format("Baking has finished.\n\nWould you like to copy lightmap files into selected group: '{0}'", group.sourceFolder), "Yes", "No"))
 		{
 			CopyLightmapFilesToGroup(singleton.activeGroup);
 		}
@@ -370,7 +370,7 @@ public class LightingManager : MonoBehaviour
 	public void SwitchToGroup(int groupIndex, bool editorDlg = false)
 	{
 		#if UNITY_EDITOR
-		if (editorDlg && !EditorApplication.isPlayingOrWillChangePlaymode && !EditorUtility.DisplayDialog("LightingManager Warning", "Are you sure you want to switch to selected group?\nNOTE: If you just baked light probe data it will be overwritten!", "Ok", "Cancel"))
+		if (editorDlg && !EditorApplication.isPlayingOrWillChangePlaymode && !EditorUtility.DisplayDialog("LightingManager Warning", "Are you sure you want to switch to selected group?\n\nNOTE: If you just baked light probe data it will be overwritten!", "Ok", "Cancel"))
 		{
 			return;
 		}

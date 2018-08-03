@@ -29,11 +29,11 @@ public class LightingManagerEditor : Editor
 			}
 		}
 
-		if (GUILayout.Button("Auto set lightmap files to groups")) manager.AutoSetLightmapFiles(true);
+		if (GUILayout.Button("Set lightmap files to groups")) manager.AutoSetLightmapFiles(true);
 
 		// apply any changes made to group
 		if (manager.lightGroups == null || manager.lightGroups.Length == 0) return;
-		if (GUILayout.Button("Apply Selected Group changes")) manager.SwitchToGroup(selectedGroup, true);
+		if (GUILayout.Button("Apply Selected Group")) manager.SwitchToGroup(selectedGroup, true);
 
 		// apply group on selection change
 		var values = new string[manager.lightGroups.Length];

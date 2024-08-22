@@ -22,7 +22,6 @@ public class LightGroup
 {
 	internal LightingManager lightingManager;
 
-	public string name;
 	public GameObject[] sceneObjects;
 	public List<LightGroupTexture> lightmapTextures;
 	internal LightmapData[] data;

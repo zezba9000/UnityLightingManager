@@ -23,6 +23,9 @@ public class LightingManagerEditor : Editor
 		if (manager == null) return;
 		manager.EditorConfigure();
 
+		// validate state
+		if (manager.lightGroups == null || manager.lightGroups.Length == 0) return;
+
 		// bake features
 		if (GUILayout.Button("Bake Group"))
 		{

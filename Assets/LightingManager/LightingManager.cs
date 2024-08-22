@@ -1,10 +1,7 @@
 ﻿using UnityEngine;
-using System;
 using System.IO;
-using System.Linq;
 using System.Collections;
-using UnityEngine.Rendering;
-using System.Runtime.InteropServices;
+
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -117,7 +114,7 @@ public class LightingManager : MonoBehaviour
 	private static IEnumerator Lightmapping_completed_Delay()
 	{
 		Debug.Log("Post process of light bake...");
-		yield return new WaitForSecondsRealtime(20);
+		yield return new WaitForSecondsRealtime(3);
 		Debug.Log("Post process of light bake... Working...");
 		AssetDatabase.SaveAssets();
 		singleton.EditorConfigure();

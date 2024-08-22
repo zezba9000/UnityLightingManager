@@ -22,6 +22,8 @@ public class LightGroup
 {
 	internal LightingManager lightingManager;
 
+	public bool changeSkybox;
+	public Material skyboxMaterial;
 	public GameObject[] sceneObjects;
 	public List<LightGroupTexture> lightmapTextures;
 	internal LightmapData[] data;
@@ -68,6 +70,9 @@ public class LightGroup
 
 	public void Enable()
 	{
+		// change skybox
+		if (changeSkybox) RenderSettings.skybox = skyboxMaterial;
+
 		// enable objects and components
 		if (sceneObjects != null)
 		{

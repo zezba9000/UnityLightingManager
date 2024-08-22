@@ -1,5 +1,7 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 [CustomEditor(typeof(LightingManager))]
@@ -19,36 +21,61 @@ public class LightingManagerEditor : Editor
 	{
 		base.OnInspectorGUI();
 		if (manager == null) return;
+		manager.EditorConfigure();
 
-		// setup features
-		if (GUILayout.Button("Copy lightmap files to Selected Group"))
+		// bake features
+		if (GUILayout.Button("Bake Group"))
 		{
-			if (EditorUtility.DisplayDialog("Alert", "Do you want to copy baked lighting files to selected group?", "Ok", "Cancel"))
+			if (manager.lightGroups == null || manager.lightGroups.Length == 0)
 			{
-				manager.CopyLightmapFilesToGroup(selectedGroup);
+				EditorUtility.DisplayDialog("Alert", "No selected groups", "Ok");
+			}
+			else
+			{
+				manager.AutoSetLightmapFiles();
+				var activeScene = EditorSceneManager.GetActiveScene();
+				if (EditorSceneManager.SaveScene(activeScene))
+				{
+					Lightmapping.lightingDataAsset = null;
+					Lightmapping.BakeAsync();
+				}
+				else
+				{
+					EditorUtility.DisplayDialog("Alert", "Failed to save scene", "Ok");
+				}
 			}
 		}
 
-		if (GUILayout.Button("Set lightmap files to groups")) manager.AutoSetLightmapFiles(true);
+		/*// manual copy button
+		if (GUILayout.Button("Copy main lightmap files to Selected-Group folder"))
+		{
+			if (EditorUtility.DisplayDialog("Alert", "Do you want to copy baked lighting files to selected group?", "Ok", "Cancel"))
+			{
+				manager.activeGroup = selectedGroup;
+				manager.CopyLightmapFilesToGroup();
+			}
+		}
 
-		// apply any changes made to group
+		if (GUILayout.Button("Detect and set lightmap textures to Selected-Group")) manager.AutoSetLightmapFiles();
+
+		// manual apply butten
 		if (manager.lightGroups == null || manager.lightGroups.Length == 0) return;
-		if (GUILayout.Button("Apply Selected Group")) manager.SwitchToGroup(selectedGroup, true);
+		if (GUILayout.Button("Apply Selected Group to scene")) manager.SwitchToGroup(selectedGroup);*/
 
 		// apply group on selection change
 		var values = new string[manager.lightGroups.Length];
-		for (int i = 0; i != values.Length; ++i) values[i] = Path.GetFileName(manager.lightGroups[i].sourceFolder);
+		for (int i = 0; i != values.Length; ++i) values[i] = Path.GetFileName(manager.lightGroups[i].GetSourcePath());
 		if (manager.activeGroup != selectedGroup)
 		{
 			selectedGroup = manager.activeGroup;
-			manager.SwitchToGroup(selectedGroup, true);
+			manager.SwitchToGroup(selectedGroup);
 			selectedGroup = manager.activeGroup;
 		}
 
 		selectedGroup = EditorGUILayout.Popup(selectedGroup, values);
 		if (manager.activeGroup != selectedGroup)
 		{
-			manager.SwitchToGroup(selectedGroup, true);
+			manager.SwitchToGroup(selectedGroup);
 			selectedGroup = manager.activeGroup;
 		}
 	}

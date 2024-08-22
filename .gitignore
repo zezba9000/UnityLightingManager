@@ -28,6 +28,7 @@ ipch/
 /[Bb]uild/
 /[Bb]uilds/
 /Assets/AssetStoreTools*
+/UserSettings/
 
 *.sln
 *.csproj
@@ -37,5 +38,6 @@ ipch/
 *.apk
 *.unitypackage
 *.log
+*.vsconfig
 
 sysinfo.txt

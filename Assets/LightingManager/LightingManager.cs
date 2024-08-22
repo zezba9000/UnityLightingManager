@@ -2,7 +2,7 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Collections.Generic;
+using System.Collections;
 using UnityEngine.Rendering;
 using System.Runtime.InteropServices;
 
@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using UnityEditor;
 #endif
 
+[ExecuteInEditMode]
 public class LightingManager : MonoBehaviour
 {
 	public static LightingManager singleton;
@@ -24,10 +25,20 @@ public class LightingManager : MonoBehaviour
 		singleton = this;
 	}
 
-	private void Start()
+	private void Awake()
 	{
 		singleton = this;
+	}
 
+	#if UNITY_EDITOR
+	private void Update()
+	{
+		singleton = this;
+	}
+	#endif
+
+	private void Start()
+	{
 		if (lightGroups != null)
 		{
 			foreach (var group in lightGroups)
@@ -84,13 +95,44 @@ public class LightingManager : MonoBehaviour
 	private void OnDestroy()
 	{
 		Lightmapping.bakeCompleted -= Lightmapping_completed;
+		EditorApplication.update -= EditorUpdate;
 	}
 
+	private static IEnumerator Lightmapping_completed_coroutine;
 	private void Lightmapping_completed()
 	{
-		if (!ValidateActiveGroup()) return;
-		CopyLightmapFilesToGroup();
-		AutoSetLightmapFiles();
+		Lightmapping_completed_coroutine = Lightmapping_completed_Delay();
+		EditorApplication.update += EditorUpdate;
+	}
+
+	private static void EditorUpdate()
+	{
+		if (Lightmapping_completed_coroutine != null && !Lightmapping_completed_coroutine.MoveNext())
+        {
+			Lightmapping_completed_coroutine = null;
+            EditorApplication.update -= EditorUpdate;
+        }
+	}
+
+	private static IEnumerator Lightmapping_completed_Delay()
+	{
+		Debug.Log("Post process of light bake...");
+		yield return new WaitForSecondsRealtime(20);
+		Debug.Log("Post process of light bake... Working...");
+		AssetDatabase.SaveAssets();
+		singleton.EditorConfigure();
+
+		if (!singleton.ValidateActiveGroup()) yield break;
+		if (string.IsNullOrWhiteSpace(singleton.bakedFolder))
+		{
+			Debug.LogError("BakedFolder is empty");
+			yield break;
+		}
+
+		AssetDatabase.Refresh();
+		singleton.CopyLightmapFilesToGroup();
+		singleton.AutoSetLightmapFiles();
+		Debug.Log("Post process of light bake... Done");
 	}
 
 	public void CopyLightmapFilesToGroup()

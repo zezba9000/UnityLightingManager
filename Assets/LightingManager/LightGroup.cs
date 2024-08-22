@@ -78,8 +78,13 @@ public class LightGroup
 		#if UNITY_EDITOR
 		if (!Application.isPlaying)
 		{
-			string lightingDataPath = GetSourcePath();
-			Lightmapping.lightingDataAsset = LoadAsset<LightingDataAsset>(Path.Combine(lightingDataPath, "LightingData.asset"));
+			string lightingDataPath = Path.Combine(GetSourcePath(), "LightingData.asset");
+			if (!File.Exists(lightingDataPath))
+			{
+				Debug.LogWarning("Can't find: " + lightingDataPath);
+				return;
+			}
+			Lightmapping.lightingDataAsset = LoadAsset<LightingDataAsset>(lightingDataPath);
 			return;// don't need to run anything else in editor
 		}
 		#endif

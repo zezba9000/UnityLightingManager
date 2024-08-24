@@ -69,6 +69,12 @@ public class LightingManager : MonoBehaviour
 		nextGroup.Enable();
 	}
 
+	public static void ResetLighting()
+	{
+		LightmapSettings.lightProbes = null;
+		LightmapSettings.lightmaps = null;
+	}
+
 	#if UNITY_EDITOR
 	public void EditorConfigure()
 	{

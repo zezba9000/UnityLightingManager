@@ -49,6 +49,15 @@ public class LightingManagerEditor : Editor
 			}
 		}
 
+		/*if (GUILayout.Button("Test"))
+		{
+			foreach (var o in UnityEngine.Object.FindObjectsOfType<GameObject>(false))
+			{
+				if (!o.isStatic) continue;
+				Debug.Log($"Name:'{o.name}' ID:{o.GetInstanceID()}");
+			}
+		}*/
+
 		/*// manual copy button
 		if (GUILayout.Button("Copy main lightmap files to Selected-Group folder"))
 		{

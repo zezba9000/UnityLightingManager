@@ -7,7 +7,7 @@ using System.Collections;
 using UnityEditor;
 #endif
 
-[ExecuteInEditMode]
+//[ExecuteInEditMode]
 public class LightingManager : MonoBehaviour
 {
 	public static LightingManager singleton;
@@ -17,20 +17,28 @@ public class LightingManager : MonoBehaviour
 
 	public LightGroup[] lightGroups;
 
+	#if UNITY_EDITOR
 	public LightingManager()
 	{
 		singleton = this;
+		Lightmapping.bakeCompleted -= singleton.Lightmapping_completed;
+		Lightmapping.bakeCompleted += singleton.Lightmapping_completed;
 	}
+	#endif
 
 	private void Awake()
 	{
 		singleton = this;
+		#if UNITY_EDITOR
+		Lightmapping.bakeCompleted -= singleton.Lightmapping_completed;
+		Lightmapping.bakeCompleted += singleton.Lightmapping_completed;
+		#endif
 	}
 
 	#if UNITY_EDITOR
 	private void Update()
 	{
-		singleton = this;
+		//singleton = this;
 	}
 	#endif
 

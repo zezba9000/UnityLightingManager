@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -20,6 +21,9 @@ public class LightGroupTexture
 [Serializable]
 public class LightGroup
 {
+	private const string lightProbDataFile = "LightProbes.data";
+	//private const string renderersDataFile = "Renderers.data";
+
 	internal LightingManager lightingManager;
 
 	public bool changeSkybox;
@@ -94,11 +98,17 @@ public class LightGroup
 		}
 		#endif
 
+		// set lightmap data object
+		if (data == null) CreateDataObjects();
+		LightmapSettings.lightmaps = data;
+
+		// source path
+		string srcPath = GetSourcePath();
+
 		// load and set light probes
 		if (LightmapSettings.lightProbes != null)
 		{
-			string sourcePath = GetSourcePath();
-			string probePath = Path.Combine(sourcePath, "LightProbes.data");
+			string probePath = Path.Combine(srcPath, lightProbDataFile);
 			if (File.Exists(probePath))
 			{
 				SphericalHarmonicsL2[] bakedProbes;
@@ -123,13 +133,85 @@ public class LightGroup
 			}
 			else
 			{
+				Debug.LogError("Expected file: " + lightProbDataFile);
 				LightmapSettings.lightProbes.bakedProbes = new SphericalHarmonicsL2[0];
 			}
 		}
 
-		// set lightmap data object
-		if (data == null) CreateDataObjects();
-		LightmapSettings.lightmaps = data;
+		/*// load renderer states
+		var objs = UnityEngine.Object.FindObjectsOfType<GameObject>(false);
+		if (objs != null && objs.Length != 0)
+		{
+			string rendererPath = Path.Combine(srcPath, renderersDataFile);
+			if (File.Exists(rendererPath))
+			{
+				using (var stream = new FileStream(Path.Combine(srcPath, renderersDataFile), FileMode.Open, FileAccess.Read))
+				using (var reader = new BinaryReader(stream))
+				{
+					// read length
+					int expectedLength = reader.ReadInt32();
+
+					// read objects
+					int length = 0;
+					foreach (var o in objs)
+					{
+						if (!o.isStatic) continue;
+
+						var r = o.GetComponent<MeshRenderer>();
+						if (!r || r.receiveGI != ReceiveGI.Lightmaps) continue;
+
+						var f = o.GetComponent<MeshFilter>();
+						if (!f) continue;
+
+						// validate instance
+						int instanceID = reader.ReadInt32();
+						var trueObj = objs.FirstOrDefault(x => x.GetInstanceID() == instanceID);
+						if (!trueObj)
+						{
+							Debug.LogError("Failed to find object instance: " + o.name);
+							break;
+						}
+
+						r = trueObj.GetComponent<MeshRenderer>();
+						if (!r)
+						{
+							Debug.LogError("Renderer no longer exists on instance: " + trueObj.name);
+							break;
+						}
+						
+						// read lightmap offsets
+						int lightmapIndex = reader.ReadInt32();
+						var lightmapScaleOffset = reader.ReadVector4();
+						r.lightmapIndex = lightmapIndex;
+						r.lightmapScaleOffset = lightmapScaleOffset;
+						r.realtimeLightmapIndex = lightmapIndex;
+						r.realtimeLightmapScaleOffset = lightmapScaleOffset;
+
+						// read lightmap uvs
+						int uvCount = reader.ReadInt32();
+						var uvs = new Vector2[uvCount];
+						for (int i = 0; i < uvCount; ++i)
+						{
+							uvs[i] = reader.ReadVector2();
+						}
+
+						var mesh = new Mesh();
+						mesh.SetUVs(1, uvs);
+						r.enlightenVertexStream = mesh;
+
+						// finish
+						r.UpdateGIMaterials();
+						length++;
+					}
+
+					if (length != expectedLength) Debug.LogError("Renderer length did not match expected length");
+				}
+			}
+			else
+			{
+				Debug.LogError("Expected file: " + renderersDataFile);
+			}
+		}*/
 
 		// make sure GI is up to date
 		DynamicGI.UpdateEnvironment();
@@ -148,19 +230,19 @@ public class LightGroup
 	{
 		string dstPath = GetSourcePath();
 		if (!Directory.Exists(dstPath)) Directory.CreateDirectory(dstPath);
-		CopyLightmapFiles(srcPath, dstPath, true);
+		CopyLightmapFiles(srcPath, dstPath);
 	}
 
-	public void CopyLightmapFiles(string srcPath, string dstPath, bool saveLightProbeData)
+	public void CopyLightmapFiles(string srcPath, string dstPath)
 	{
-		const string lightProbDataFile = "LightProbes.data";
-
 		// delete unused files
+		Debug.Log("Deleting unused lightmap files");
 		var bakedFolderFiles = Directory.GetFiles(srcPath);
 		foreach (string dstFile in Directory.GetFiles(dstPath))
 		{
 			string dstFileName = Path.GetFileName(dstFile);
 			if (dstFileName == lightProbDataFile) continue;
+			//if (dstFileName == renderersDataFile) continue;
 			if (!bakedFolderFiles.Any(x => Path.GetFileName(x) == dstFileName))
 			{
 				var info = new FileInfo(dstFile);
@@ -170,6 +252,7 @@ public class LightGroup
 		}
 
 		// copy new files
+		Debug.Log("Coping new baked files");
 		foreach (string srcFile in Directory.GetFiles(srcPath))
 		{
 			// make sure file isn't locked
@@ -195,27 +278,91 @@ public class LightGroup
 		}
 
 		// save light probes
-		if (saveLightProbeData)
+		if (LightmapSettings.lightProbes != null && LightmapSettings.lightProbes.bakedProbes != null)
 		{
-			if (LightmapSettings.lightProbes != null && LightmapSettings.lightProbes.bakedProbes != null)
+			Debug.Log("Saving lightprobe data");
+			using (var stream = new FileStream(Path.Combine(dstPath, lightProbDataFile), FileMode.Create, FileAccess.Write))
+			using (var writer = new BinaryWriter(stream))
 			{
-				using (var stream = new FileStream(Path.Combine(dstPath, lightProbDataFile), FileMode.Create, FileAccess.Write))
-				using (var writer = new BinaryWriter(stream))
+				writer.Write(LightmapSettings.lightProbes.bakedProbes.Length);
+				foreach (var probe in LightmapSettings.lightProbes.bakedProbes)
 				{
-					writer.Write(LightmapSettings.lightProbes.bakedProbes.Length);
-					foreach (var probe in LightmapSettings.lightProbes.bakedProbes)
+					for (int x = 0; x != 3; ++x)
 					{
-						for (int x = 0; x != 3; ++x)
+						for (int y = 0; y != 9; ++y)
 						{
-							for (int y = 0; y != 9; ++y)
-							{
-								writer.Write(probe[x,y]);
-							}
+							writer.Write(probe[x,y]);
 						}
 					}
 				}
 			}
 		}
+		else
+		{
+			string path = Path.Combine(dstPath, lightProbDataFile);
+			var info = new FileInfo(path);
+			info.Attributes = FileAttributes.Normal;
+			File.Delete(path);
+			File.Delete(path + ".meta");
+		}
+
+		/*// save renderer states
+		var objs = UnityEngine.Object.FindObjectsOfType<GameObject>(false);
+		if (objs != null && objs.Length != 0)
+		{
+			Debug.Log("Saving renderer data");
+			using (var stream = new FileStream(Path.Combine(dstPath, renderersDataFile), FileMode.Create, FileAccess.Write))
+			using (var writer = new BinaryWriter(stream))
+			{
+				// find length
+				int length = 0;
+				foreach (var o in objs)
+				{
+					if (!o.isStatic) continue;
+
+					var r = o.GetComponent<MeshRenderer>();
+					if (!r || r.receiveGI != ReceiveGI.Lightmaps) continue;
+
+					var f = o.GetComponent<MeshFilter>();
+					if (!f) continue;
+
+					length++;
+				}
+				writer.Write(length);// write length
+
+				// write objects
+				foreach (var o in objs)
+				{
+					if (!o.isStatic) continue;
+
+					var r = o.GetComponent<MeshRenderer>();
+					if (!r || r.receiveGI != ReceiveGI.Lightmaps) continue;
+
+					var f = o.GetComponent<MeshFilter>();
+					if (!f) continue;
+
+					writer.Write(o.GetInstanceID());
+					writer.Write(r.lightmapIndex);
+					writer.Write(r.lightmapScaleOffset);
+
+					var uvs = new List<Vector2>();
+					f.mesh.GetUVs(1, uvs);
+					writer.Write(uvs.Count);
+					for (int i = 0; i != uvs.Count; ++i)
+					{
+						writer.Write(uvs[i]);
+					}
+				}
+			}
+		}
+		else
+		{
+			string path = Path.Combine(dstPath, renderersDataFile);
+			var info = new FileInfo(path);
+			info.Attributes = FileAttributes.Normal;
+			File.Delete(path);
+			File.Delete(path + ".meta");
+		}*/
 	}
 
 	private T LoadAsset<T>(string file) where T : UnityEngine.Object
@@ -250,4 +397,39 @@ public class LightGroup
 		}
 	}
 	#endif
+}
+
+static class StreamExt
+{
+	public static void Write(this BinaryWriter writer, Vector2 vector)
+	{
+		writer.Write(vector.x);
+		writer.Write(vector.y);
+	}
+
+	public static void Write(this BinaryWriter writer, Vector4 vector)
+	{
+		writer.Write(vector.x);
+		writer.Write(vector.y);
+		writer.Write(vector.z);
+		writer.Write(vector.w);
+	}
+
+	public static Vector2 ReadVector2(this BinaryReader reader)
+	{
+		Vector2 result;
+		result.x = reader.ReadSingle();
+		result.y = reader.ReadSingle();
+		return result;
+	}
+
+	public static Vector4 ReadVector4(this BinaryReader reader)
+	{
+		Vector4 result;
+		result.x = reader.ReadSingle();
+		result.y = reader.ReadSingle();
+		result.z = reader.ReadSingle();
+		result.w = reader.ReadSingle();
+		return result;
+	}
 }

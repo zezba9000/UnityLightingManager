@@ -3,3 +3,4 @@
 * lightmaps
 * lightprobes
 * Other scene objects
+* NOTE: LegacyRP needs static batching off in PlayerSettings

@@ -10,6 +10,7 @@ using UnityEditor;
 //[ExecuteInEditMode]
 public class LightingManager : MonoBehaviour
 {
+	public Texture test;
 	public static LightingManager singleton;
 
 	public string bakedFolder;

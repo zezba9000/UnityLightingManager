@@ -1,10 +1,9 @@
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Text.RegularExpressions;
 using UnityEditor;
@@ -21,8 +20,9 @@ public class LightGroupTexture
 [Serializable]
 public class LightGroup
 {
-	private const string lightProbDataFile = "LightProbes.data";
-	//private const string renderersDataFile = "Renderers.data";
+    private const string renderSettingsFile = "RenderSettings.data";
+    private const string lightProbDataFile = "LightProbes.data";
+	private const string renderersDataFile = "Renderers.data";
 
 	internal LightingManager lightingManager;
 
@@ -69,8 +69,30 @@ public class LightGroup
 			data[i].lightmapColor = map.color;
 			data[i].lightmapDir = map.direction;
 			data[i].shadowMask = map.shadowMask;
-		}
+
+        }
 	}
+
+	private void DisableStaticBakeLightsRecursive(Transform transform)
+	{
+		// disable baking lights or Unity bug activates them as realtime
+		var light = transform.GetComponent<Light>();
+		if (light && light.lightmapBakeType == LightmapBakeType.Baked) light.enabled = false;
+
+        // set lightprobes to update once in realtime
+		if (transform.gameObject.activeSelf)
+		{
+			var reflectionProbe = transform.GetComponent<ReflectionProbe>();
+			if (reflectionProbe && reflectionProbe.enabled)
+			{
+                reflectionProbe.refreshMode = ReflectionProbeRefreshMode.ViaScripting;
+                reflectionProbe.mode = ReflectionProbeMode.Realtime;
+                reflectionProbe.RenderProbe();
+            }
+		}
+
+        foreach (Transform t in transform) DisableStaticBakeLightsRecursive(t);
+    }
 
 	public void Enable()
 	{
@@ -80,7 +102,11 @@ public class LightGroup
 		// enable objects and components
 		if (sceneObjects != null)
 		{
-			foreach (var obj in sceneObjects) obj.SetActive(true);
+			foreach (var obj in sceneObjects)
+			{
+                obj.SetActive(true);
+                DisableStaticBakeLightsRecursive(obj.transform);
+            }
 		}
 
 		// set editor data or editor can get confused
@@ -101,12 +127,47 @@ public class LightGroup
 		// set lightmap data object
 		if (data == null) CreateDataObjects();
 		LightmapSettings.lightmaps = data;
-
+		
 		// source path
 		string srcPath = GetSourcePath();
 
-		// load and set light probes
-		if (LightmapSettings.lightProbes != null)
+        // load render settings
+        string renderSettingsPath = Path.Combine(srcPath, renderSettingsFile);
+        if (File.Exists(renderSettingsPath))
+		{
+			Debug.Log("Loading RenderSettings data");
+			using (var stream = new FileStream(renderSettingsPath, FileMode.Open, FileAccess.Read))
+			using (var reader = new BinaryReader(stream))
+			{
+                LightmapSettings.lightmapsMode = (LightmapsMode)reader.ReadInt32();
+
+                RenderSettings.fog = reader.ReadBoolean();
+				RenderSettings.fogColor = reader.ReadColor();
+				RenderSettings.fogDensity = reader.ReadSingle();
+				RenderSettings.fogEndDistance = reader.ReadSingle();
+				RenderSettings.fogMode = (FogMode)reader.ReadInt32();
+
+				RenderSettings.ambientEquatorColor = reader.ReadColor();
+				RenderSettings.ambientGroundColor = reader.ReadColor();
+				RenderSettings.ambientIntensity = reader.ReadSingle();
+				RenderSettings.ambientLight = reader.ReadColor();
+				RenderSettings.ambientMode = (AmbientMode)reader.ReadInt32();
+				RenderSettings.ambientSkyColor = reader.ReadColor();
+
+                var ambientProbe = new SphericalHarmonicsL2();
+                for (int x = 0; x != 3; ++x)
+                {
+                    for (int y = 0; y != 9; ++y)
+                    {
+                        ambientProbe[x, y] = reader.ReadSingle();
+                    }
+                }
+                RenderSettings.ambientProbe = ambientProbe;
+            }
+		}
+
+        // load and set light probes
+        if (LightmapSettings.lightProbes != null)
 		{
 			string probePath = Path.Combine(srcPath, lightProbDataFile);
 			if (File.Exists(probePath))
@@ -130,16 +191,17 @@ public class LightGroup
 				}
 
 				LightmapSettings.lightProbes.bakedProbes = bakedProbes;
-			}
-			else
+                //LightProbes.Tetrahedralize();// causes issues
+            }
+            else
 			{
 				Debug.LogError("Expected file: " + lightProbDataFile);
 				LightmapSettings.lightProbes.bakedProbes = new SphericalHarmonicsL2[0];
 			}
 		}
 
-		/*// load renderer states
-		var objs = UnityEngine.Object.FindObjectsOfType<GameObject>(false);
+		// load renderer states
+		var objs = UnityEngine.Object.FindObjectsByType<LightmapObject>(FindObjectsSortMode.None);
 		if (objs != null && objs.Length != 0)
 		{
 			string rendererPath = Path.Combine(srcPath, renderersDataFile);
@@ -155,7 +217,7 @@ public class LightGroup
 					int length = 0;
 					foreach (var o in objs)
 					{
-						if (!o.isStatic) continue;
+						if (!o.gameObject.isStatic || !o.gameObject.activeSelf) continue;
 
 						var r = o.GetComponent<MeshRenderer>();
 						if (!r || r.receiveGI != ReceiveGI.Lightmaps) continue;
@@ -164,8 +226,8 @@ public class LightGroup
 						if (!f) continue;
 
 						// validate instance
-						int instanceID = reader.ReadInt32();
-						var trueObj = objs.FirstOrDefault(x => x.GetInstanceID() == instanceID);
+						int hash = reader.ReadInt32();
+						var trueObj = objs.FirstOrDefault(x => x.hash == hash);
 						if (!trueObj)
 						{
 							Debug.LogError("Failed to find object instance: " + o.name);
@@ -178,30 +240,17 @@ public class LightGroup
 							Debug.LogError("Renderer no longer exists on instance: " + trueObj.name);
 							break;
 						}
-						
-						// read lightmap offsets
-						int lightmapIndex = reader.ReadInt32();
+
+                        // read lightmap offsets
+                        int lightmapIndex = reader.ReadInt32();
 						var lightmapScaleOffset = reader.ReadVector4();
 						r.lightmapIndex = lightmapIndex;
 						r.lightmapScaleOffset = lightmapScaleOffset;
-						r.realtimeLightmapIndex = lightmapIndex;
-						r.realtimeLightmapScaleOffset = lightmapScaleOffset;
+						if (r.isPartOfStaticBatch) Debug.LogError("Static batching is on. Disable in Player settings");
 
-						// read lightmap uvs
-						int uvCount = reader.ReadInt32();
-						var uvs = new Vector2[uvCount];
-						for (int i = 0; i < uvCount; ++i)
-						{
-							uvs[i] = reader.ReadVector2();
-						}
-
-						var mesh = new Mesh();
-						mesh.SetUVs(1, uvs);
-						r.enlightenVertexStream = mesh;
-
-						// finish
-						r.UpdateGIMaterials();
-						length++;
+                        // finish
+                        r.UpdateGIMaterials();
+                        length++;
 					}
 
 					if (length != expectedLength) Debug.LogError("Renderer length did not match expected length");
@@ -211,13 +260,13 @@ public class LightGroup
 			{
 				Debug.LogError("Expected file: " + renderersDataFile);
 			}
-		}*/
+		}
 
-		// make sure GI is up to date
-		DynamicGI.UpdateEnvironment();
-	}
+        // make sure GI is up to date
+        DynamicGI.UpdateEnvironment();
+    }
 
-	public void Disable()
+    public void Disable()
 	{
 		if (sceneObjects != null)
 		{
@@ -242,7 +291,7 @@ public class LightGroup
 		{
 			string dstFileName = Path.GetFileName(dstFile);
 			if (dstFileName == lightProbDataFile) continue;
-			//if (dstFileName == renderersDataFile) continue;
+			if (dstFileName == renderersDataFile) continue;
 			if (!bakedFolderFiles.Any(x => Path.GetFileName(x) == dstFileName))
 			{
 				var info = new FileInfo(dstFile);
@@ -277,8 +326,38 @@ public class LightGroup
 			if (!string.IsNullOrEmpty(error)) Debug.LogError(error);
 		}
 
-		// save light probes
-		if (LightmapSettings.lightProbes != null && LightmapSettings.lightProbes.bakedProbes != null)
+        // save render settings
+        Debug.Log("Saving RenderSettings data");
+        using (var stream = new FileStream(Path.Combine(dstPath, renderSettingsFile), FileMode.Create, FileAccess.Write))
+        using (var writer = new BinaryWriter(stream))
+        {
+            writer.Write((int)LightmapSettings.lightmapsMode);
+
+            writer.Write(RenderSettings.fog);
+            writer.Write(RenderSettings.fogColor);
+            writer.Write(RenderSettings.fogDensity);
+            writer.Write(RenderSettings.fogEndDistance);
+            writer.Write((int)RenderSettings.fogMode);
+
+            writer.Write(RenderSettings.ambientEquatorColor);
+            writer.Write(RenderSettings.ambientGroundColor);
+            writer.Write(RenderSettings.ambientIntensity);
+            writer.Write(RenderSettings.ambientLight);
+            writer.Write((int)RenderSettings.ambientMode);
+            writer.Write(RenderSettings.ambientSkyColor);
+
+            var ambientProbe = RenderSettings.ambientProbe;
+            for (int x = 0; x != 3; ++x)
+            {
+                for (int y = 0; y != 9; ++y)
+                {
+                    writer.Write(ambientProbe[x, y]);
+                }
+            }
+        }
+
+        // save light probes
+        if (LightmapSettings.lightProbes != null && LightmapSettings.lightProbes.bakedProbes != null)
 		{
 			Debug.Log("Saving lightprobe data");
 			using (var stream = new FileStream(Path.Combine(dstPath, lightProbDataFile), FileMode.Create, FileAccess.Write))
@@ -306,8 +385,8 @@ public class LightGroup
 			File.Delete(path + ".meta");
 		}
 
-		/*// save renderer states
-		var objs = UnityEngine.Object.FindObjectsOfType<GameObject>(false);
+		// save renderer states
+		var objs = UnityEngine.Object.FindObjectsByType<LightmapObject>(FindObjectsSortMode.None);
 		if (objs != null && objs.Length != 0)
 		{
 			Debug.Log("Saving renderer data");
@@ -318,7 +397,7 @@ public class LightGroup
 				int length = 0;
 				foreach (var o in objs)
 				{
-					if (!o.isStatic) continue;
+					if (!o.gameObject.isStatic || !o.gameObject.activeSelf) continue;
 
 					var r = o.GetComponent<MeshRenderer>();
 					if (!r || r.receiveGI != ReceiveGI.Lightmaps) continue;
@@ -333,7 +412,7 @@ public class LightGroup
 				// write objects
 				foreach (var o in objs)
 				{
-					if (!o.isStatic) continue;
+					if (!o.gameObject.isStatic || !o.gameObject.activeSelf) continue;
 
 					var r = o.GetComponent<MeshRenderer>();
 					if (!r || r.receiveGI != ReceiveGI.Lightmaps) continue;
@@ -341,17 +420,9 @@ public class LightGroup
 					var f = o.GetComponent<MeshFilter>();
 					if (!f) continue;
 
-					writer.Write(o.GetInstanceID());
+					writer.Write(o.hash);
 					writer.Write(r.lightmapIndex);
 					writer.Write(r.lightmapScaleOffset);
-
-					var uvs = new List<Vector2>();
-					f.mesh.GetUVs(1, uvs);
-					writer.Write(uvs.Count);
-					for (int i = 0; i != uvs.Count; ++i)
-					{
-						writer.Write(uvs[i]);
-					}
 				}
 			}
 		}
@@ -362,7 +433,7 @@ public class LightGroup
 			info.Attributes = FileAttributes.Normal;
 			File.Delete(path);
 			File.Delete(path + ".meta");
-		}*/
+		}
 	}
 
 	private T LoadAsset<T>(string file) where T : UnityEngine.Object
@@ -415,7 +486,15 @@ static class StreamExt
 		writer.Write(vector.w);
 	}
 
-	public static Vector2 ReadVector2(this BinaryReader reader)
+    public static void Write(this BinaryWriter writer, Color color)
+    {
+        writer.Write(color.r);
+        writer.Write(color.g);
+        writer.Write(color.b);
+        writer.Write(color.a);
+    }
+
+    public static Vector2 ReadVector2(this BinaryReader reader)
 	{
 		Vector2 result;
 		result.x = reader.ReadSingle();
@@ -432,4 +511,14 @@ static class StreamExt
 		result.w = reader.ReadSingle();
 		return result;
 	}
+
+    public static Color ReadColor(this BinaryReader reader)
+    {
+        Color result;
+        result.r = reader.ReadSingle();
+        result.g = reader.ReadSingle();
+        result.b = reader.ReadSingle();
+        result.a = reader.ReadSingle();
+        return result;
+    }
 }
